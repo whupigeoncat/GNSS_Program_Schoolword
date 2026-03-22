@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="RTK_CSH/RTK_CSH.vcxproj" Id="679f8c6c-d54d-4041-ad31-644ffde46a48" />
+</Solution>
