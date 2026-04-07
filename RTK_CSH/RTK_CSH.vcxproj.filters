@@ -33,6 +33,9 @@
     <ClCompile Include="Sat_pos.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="Error_correction.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="RTK_Structs.h">

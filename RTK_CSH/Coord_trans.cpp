@@ -34,7 +34,7 @@ bool XYZToBLH(const XYZ* xyz, BLH* blh, const double A, const double F)
 	e2 = 2 * F - (F * F);
 	delta_Z[0] = e2 * Z;
 
-	if (X * X + Y * Y < 1e-10)
+	if (X * X + Y * Y +Z * Z< 1e-10)
 	{
 		blh->b = 0;
 		blh->l = 0;

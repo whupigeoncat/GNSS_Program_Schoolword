@@ -55,6 +55,13 @@
 #define MAXBDSNUM 63
 #define MAXRAWLEN 40960
 
+//标准气象元素
+#define H0_Hop		0.00
+#define T0_Hop		288.16
+#define p0_Hop		1013.25
+#define RH0_Hop		0.50
+
+
 /*坐标系结构体（数组）定义*/
 union XYZ	//空间直角坐标系
 {
@@ -417,7 +424,7 @@ bool CompSatClkOff( const int Prn, const GNSSSys Sys, const GPSTIME* t, GPSEPHRE
 bool CompGPSSatPVT( const int Prn, const GPSTIME* t, const GPSEPHREC* Eph, SATMIDRES* Mid);
 bool CompBDSSatPVT( const int Prn, const GPSTIME* t, const GPSEPHREC* Eph, SATMIDRES* Mid);
 void ComputeGPSSatOrbitAtSignalTrans(const EPOCHOBS* Epk, GPSEPHREC* GpsEph, GPSEPHREC* BDSEph, double RcvPos[3], SATMIDRES* MidRes);
-double hopfield(double hgt,double elev);
+double Hopfield(const double H,const double Elev);
 
 // SPP & SPV
 void DetectOutlier(EPOCHOBS* Obs);  // 线性组合探测粗差

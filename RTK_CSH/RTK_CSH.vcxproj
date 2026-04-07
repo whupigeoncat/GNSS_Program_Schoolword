@@ -131,6 +131,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Decoding.cpp" />
+    <ClCompile Include="Error_correction.cpp" />
     <ClCompile Include="matrix_inv.cpp" />
     <ClCompile Include="main.cpp">
       <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\asus\Documents\Libraries\eigen-5.0.0</AdditionalIncludeDirectories>
