@@ -1,15 +1,36 @@
 #include"RTK_Structs.h"
 
-
 bool CompSatClkOff(const int Prn, const GNSSSys Sys, const GPSTIME* t, GPSEPHREC* GPSEph, GPSEPHREC* BDSEph, SATMIDRES* Mid)
 {
+	int Tlimt = 7500.0;
+	GPSTIME T_curt = *t;
+	GPSEPHREC* Eph;
+	if (Sys == GPS) Eph = GPSEph + Prn - 1;
+	else if (Sys == BDS)
+	{
+		Eph = GPSEph + Prn - 1;
+		T_curt.SecOfWeek -= 14;
+		T_curt.Week -= 1356;
+		Tlimt = 3900.0;
+	}
+	else return false;
+
+	if (Eph->Sys != Sys || Eph->PRN != Prn) return false;
+
+	double tkc = GetDiffTime(t, &Eph->TOC);
+	if (fabs(tkc) > Tlimt || Eph->SVHealth != 0) return false;
+
+	Mid->SatClkOft = Eph->ClkBias + Eph->ClkDrift * tkc + Eph->ClkDriftRate * tkc * tkc;
+	Mid->SatClkSft = Eph->ClkDrift + 2 * Eph->ClkDriftRate * tkc;
+	Mid->Valid = true;
+
 	return true;
 }
 
 bool CompGPSSatPVT(const int Prn, const GPSTIME* t, const GPSEPHREC* Eph, SATMIDRES* Mid)
 {
 	//星历过期判断，星历健康标记Health是否为0，如果过期或者不健康，返回false，否则返回true
-	if (Eph->SVHealth == 1)
+	if (Eph->SVHealth != 0)
 	{
 		Mid->Valid = false;
 		return false;
@@ -52,16 +73,43 @@ bool CompGPSSatPVT(const int Prn, const GPSTIME* t, const GPSEPHREC* Eph, SATMID
 	delta_tr = F * Eph->e * sqrt(A) * sin(Ek);
 	tkc = GetDiffTime(t, &Eph->TOC);
 	Mid->SatClkOft = Eph->ClkBias + Eph->ClkDrift * tkc + Eph->ClkDriftRate * tkc * tkc + delta_tr;
-	Mid->SatClkSft = Eph->ClkDrift + 2.0 * Eph->ClkDriftRate * tkc;
 	Mid->Tgd1 = Eph->TGD1;
 	Mid->Tgd2 = Eph->TGD2;
 
 	double Ekdot, FIkdot, ukdot, rkdot, Ikdot, OMEGAkdot;
 	Ekdot = n / (1 - Eph->e * cos(Ek));
 	FIkdot = (sqrt(1 - Eph->e * Eph->e) / (1 - Eph->e * cos(Ek))) * Ekdot;
+	ukdot = 2 * (Eph->Cus * cos(2 * FIk) - Eph->Cuc * sin(2 * FIk)) * FIkdot + FIkdot;
+	rkdot = A * Eph->e * sin(Ek) * Ekdot + 2 * (Eph->Crs * cos(2 * FIk) - Eph->Crc * sin(2 * FIk)) * FIkdot;
+	Ikdot = Eph->iDot + 2 * (Eph->Cis * cos(2 * FIk) - Eph->Cic * sin(2 * FIk)) * FIkdot;
+	OMEGAkdot = Eph->OMEGADot - Omega_WGS;
 
+	Eigen::Matrix<double, 3, 4> R_dot;
+	R_dot << cos(OMEGAk), -sin(OMEGAk) * cos(ik), -(xk_ * sin(OMEGAk) + yk_ * cos(OMEGAk) * cos(ik)),  yk_ * sin(OMEGAk)* sin(ik),
+			 sin(OMEGAk),  cos(OMEGAk) * cos(ik),  (xk_ * cos(OMEGAk) - yk_ * sin(OMEGAk) * cos(ik)), -yk_ * cos(OMEGAk) * sin(ik),
+			 0,			   sin(ik),					0,												   yk_ * cos(ik);
 
-	//注意BDS星历的参考时间为BDT，GPST - BDT = 14s
+	double xk_dot, yk_dot;
+	xk_dot = rkdot * cos(uk) - rk * ukdot * sin(uk);
+	yk_dot = rkdot * sin(uk) + rk * ukdot * cos(uk);
 
-	//计算成功，Mid->Valid = true; 否则赋值为false
+	Eigen::Vector4d V;
+	V << xk_dot, yk_dot, OMEGAkdot, Ikdot;
+	Eigen::Vector3d v = R_dot * V;
+
+	Mid->SatVel[0] = v(0);
+	Mid->SatVel[1] = v(1);
+	Mid->SatVel[2] = v(2);
+	
+	double delta_trdot;
+	delta_trdot = F * Eph->e * sqrt(A) * cos(Ek) * Ekdot;
+	Mid->SatClkSft = Eph->ClkDrift + 2.0 * Eph->ClkDriftRate * tkc + delta_trdot;
+	Mid->Valid = true;
+	return true;
+
+}
+
+bool CompBDSSatPVT(const int Prn, const GPSTIME* t, const GPSEPHREC* Eph, SATMIDRES* Mid)
+{
+
 }

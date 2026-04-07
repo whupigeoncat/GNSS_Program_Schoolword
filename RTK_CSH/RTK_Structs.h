@@ -136,7 +136,7 @@ struct MJDTIME             /* 简化儒略日 */
 // GPS+BDS广播星历
 struct GPSEPHREC
 {
-	uint32_t PRN;
+	uint32_t	PRN;
 	GNSSSys     Sys;
 	GPSTIME  	TOC, TOE;
 	uint32_t	SVHealth;
