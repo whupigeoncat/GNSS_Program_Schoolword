@@ -138,6 +138,7 @@
     </ClCompile>
     <ClCompile Include="Coord_trans.cpp" />
     <ClCompile Include="Sat_pos.cpp" />
+    <ClCompile Include="SPP_SPV.cpp" />
     <ClCompile Include="Time_trans.cpp" />
   </ItemGroup>
   <ItemGroup>
