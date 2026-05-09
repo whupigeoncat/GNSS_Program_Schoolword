@@ -361,3 +361,13 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Build executables and temp output in source directory
+*.exe
+*.out
+RCa*
+
+# Generated test output files
+RTK_CSH/eph_output.txt
+RTK_CSH/Combo.txt
+RTK_CSH/ENU.txt

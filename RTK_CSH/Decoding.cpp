@@ -1,12 +1,13 @@
-#include "RTK_Structs.h"
+﻿#include "RTK_Structs.h"
 #include <cstdio>
 #include <cstring>
 #include <string>
 #include <cmath>
 #include <cstdarg>
 
-#define POLYCRC32   0xEDB88320u /* CRC32 polynomial */
+#define POLYCRC32   0xEDB88320u /*CRC32位校验码*/
 
+//CRC校验程序
 unsigned int crc32(const unsigned char* buff, int len)
 {
     int i, j;
@@ -14,7 +15,7 @@ unsigned int crc32(const unsigned char* buff, int len)
 
     for (i = 0; i < len; i++)
     {
-        crc ^= buff[i];
+        crc ^= buff[i];//二级制各位不是0的复制到crc
         for (j = 0; j < 8; j++)
         {
             if (crc & 1) crc = (crc >> 1) ^ POLYCRC32;
@@ -31,51 +32,14 @@ unsigned int UI4(unsigned char* p) { unsigned int r; memcpy(&r, p, 4); return r;
 short   I2(unsigned char* p) { short  r; memcpy(&r, p, 2); return r; }
 unsigned short UI2(unsigned char* p) { unsigned short r; memcpy(&r, p, 2); return r; }
 
-bool DataReceive(const std::string& filepath)
-{
-    FILE* fp = nullptr;
-    if (fopen_s(&fp, filepath.c_str(), "rb") != 0 || fp == nullptr)
-    {
-        return false;
-    }
 
-    unsigned char ioBuf[MAXRAWLEN];
-    unsigned char streamBuf[MAXRAWLEN * 4];
-    int streamLen = 0;
-
-    EPOCHOBS obs{};
-    GPSEPHREC geph[MAXGPSNUM]{};
-    GPSEPHREC beph[MAXBDSNUM]{};
-
-    bool ok = true;
-
-    while (true)
-    {
-        const size_t n = fread(ioBuf, 1, sizeof(ioBuf), fp);
-        if (n == 0) break;
-
-        if (streamLen + static_cast<int>(n) > static_cast<int>(sizeof(streamBuf)))
-        {
-            ok = false;
-            break;
-        }
-
-        memcpy(streamBuf + streamLen, ioBuf, n);
-        streamLen += static_cast<int>(n);
-
-        DecodeNovOem7Dat(streamBuf, streamLen, &obs, geph, beph);
-    }
-
-    if (ferror(fp)) ok = false;
-    fclose(fp);
-    return ok;
-}
-
+//还没有TCP模式
 int DecodeNovOem7Dat(unsigned char Buff[], int& Len, EPOCHOBS* obs, GPSEPHREC geph[], GPSEPHREC beph[])
 {
     int i = 0;
+    //数据头的同步字符，消息长度
     int MsgId, MsgLen;
-    unsigned char Msg[10240], MsgHead[28];
+    unsigned char Msg[MAXRAWLEN], MsgHead[28];
 
     while (i < Len)
     {
@@ -88,23 +52,23 @@ int DecodeNovOem7Dat(unsigned char Buff[], int& Len, EPOCHOBS* obs, GPSEPHREC ge
 
         if (i + 28 > Len) break;
 
-        memcpy(MsgHead, Buff + i, 28);
+        memcpy(MsgHead, Buff + i, 28);//数据头
         MsgId = UI2(MsgHead + 4);
         MsgLen = UI2(MsgHead + 8);
 
-        const int frameLen = 28 + MsgLen + 4;
-        if (i + frameLen > Len) break;
-        if (frameLen > (int)sizeof(Msg)) { ++i; continue; }
+        const int frameLen = 28 + MsgLen + 4;//整条消息长度
+        if (i + frameLen > Len) break;//字节数不足时
+        if (frameLen > (int)sizeof(Msg)) { ++i; continue; }//消息长度超过最大长度时
 
-        memcpy(Msg, Buff + i, frameLen);
+        memcpy(Msg, Buff + i, frameLen);//提取完整信息
 
-        if (crc32(Msg, 28 + MsgLen) != UI4(Msg + 28 + MsgLen))
+        if (crc32(Msg, 28 + MsgLen) != UI4(Msg + 28 + MsgLen))//CRC校验
         {
             ++i;
             continue;
         }
 
-        switch (MsgId)
+        switch (MsgId)//确定消息类型
         {
         case 43:   // RANGEB
             decode_rangeb_oem7(Msg, obs);
@@ -120,6 +84,15 @@ int DecodeNovOem7Dat(unsigned char Buff[], int& Len, EPOCHOBS* obs, GPSEPHREC ge
         }
 
         i += frameLen;
+
+        int remain = Len - i;
+        if (remain > 0)
+        {
+            memmove(Buff, Buff + i, remain);
+        }
+        Len = remain;
+
+        return MsgId;
     }
 
     // 循环结束后：把未处理尾巴前移到 Buff 开头，并更新 Len
@@ -132,33 +105,36 @@ int DecodeNovOem7Dat(unsigned char Buff[], int& Len, EPOCHOBS* obs, GPSEPHREC ge
         memmove(Buff, Buff + i, remain);  // 可能重叠，必须用 memmove
     }
     Len = remain;                  // 返回给上层（主循环）继续拼接
-    return 1;
+    return 0; //本次未解出完整有效消息
 }
 
 int decode_rangeb_oem7(unsigned char* buff, EPOCHOBS* obs)
 {
     if (buff == nullptr || obs == nullptr) return 0;
 
-    const unsigned short msgLen = UI2(buff + 8);
+    const unsigned short msgLen = UI2(buff + 8);//从消息头提取消息长度
     if (msgLen < 4) return 0;
 
     const int obsItemLen = 44;
-    int ObsNum = static_cast<int>(UI4(buff + 28));
-    const int maxObsByLen = (static_cast<int>(msgLen) - 4) / obsItemLen;
+    int ObsNum = static_cast<int>(UI4(buff + 28));//观测数据个数
+    const int maxObsByLen = (static_cast<int>(msgLen) - 4) / obsItemLen;//最大观测数据个数
     if (ObsNum < 0) ObsNum = 0;
     if (ObsNum > maxObsByLen) ObsNum = maxObsByLen;
 
+    //解码观测时刻（接收机表面时）
     obs->Time.Week = UI2(buff + 14);
     obs->Time.SecOfWeek = UI4(buff + 16) / 1000.0;
 
+    //清除上一历元残留数据
     obs->SatNum = 0;
     memset(obs->SatObs, 0, MAXCHANNUM * sizeof(SATOBS));
 
-    unsigned char* p = buff + 32; // 28-byte header + 4-byte ObsNum
+    unsigned char* p = buff + 32; //指针移到消息头和观测数据个数之后
 
+    //对所有信号观测值循环解码
     for (int i = 0; i < ObsNum; ++i, p += obsItemLen)
     {
-        const unsigned int ch_tr_status = UI4(p + 40);
+        const unsigned int ch_tr_status = UI4(p + 40);//解码跟踪状态标记，+40是因为已经跳过长度4的观测个数
         const int phaseLockFlag = (ch_tr_status >> 10) & 0x01;
         const int parityFlag = (ch_tr_status >> 11) & 0x01;
         const int codeLockedFlag = (ch_tr_status >> 12) & 0x01;
@@ -167,9 +143,10 @@ int decode_rangeb_oem7(unsigned char* buff, EPOCHOBS* obs)
         const int prn = UI2(p);
 
         GNSSSys sys = UNKS;
-        int freq = -1;
-        double wl = 0.0;
+        int freq = -1;//频率类型
+        double wl = 0.0;//卫星信号类型
 
+        //不是BDS或GPS时continue
         if (satSystem == 0)
         {
             sys = GPS;
@@ -190,7 +167,7 @@ int decode_rangeb_oem7(unsigned char* buff, EPOCHOBS* obs)
         }
 
         int m = -1;
-        for (int j = 0; j < MAXCHANNUM; ++j)
+        for (int j = 0; j < MAXCHANNUM; ++j)//在当前观测值结构体中搜索找相同卫星
         {
             if (obs->SatObs[j].System == sys && obs->SatObs[j].Prn == prn)
             {
@@ -198,7 +175,7 @@ int decode_rangeb_oem7(unsigned char* buff, EPOCHOBS* obs)
                 break;
             }
         }
-        if (m < 0)
+        if (m < 0)//没找到相同卫星时找一个空的观测值槽位存
         {
             for (int j = 0; j < MAXCHANNUM; ++j)
             {
@@ -209,27 +186,32 @@ int decode_rangeb_oem7(unsigned char* buff, EPOCHOBS* obs)
                 }
             }
         }
-        if (m < 0) continue;
+        if (m < 0) continue;//还找不到空槽位
 
         obs->SatObs[m].Prn = static_cast<short>(prn);
         obs->SatObs[m].System = sys;
-        obs->SatObs[m].P[freq] = (codeLockedFlag == 1) ? R8(p + 4) : 0.0;
-        obs->SatObs[m].L[freq] = -wl * ((phaseLockFlag == 1) ? R8(p + 16) : 0.0);
-        obs->SatObs[m].D[freq] = -wl * R4(p + 28);
-        obs->SatObs[m].LockTime[freq] = R4(p + 36);
-        obs->SatObs[m].cn0[freq] = R4(p + 32);
+        obs->SatObs[m].P[freq] = (codeLockedFlag == 1) ? R8(p + 4) : 0.0;//伪距
+        obs->SatObs[m].L[freq] = -wl * ((phaseLockFlag == 1) ? R8(p + 16) : 0.0);//载波相位，转成米
+        obs->SatObs[m].D[freq] = -wl * R4(p + 28);//多普勒
+        obs->SatObs[m].LockTime[freq] = R4(p + 36);//锁定时间
+        obs->SatObs[m].cn0[freq] = R4(p + 32);//载噪比
         obs->SatObs[m].half[freq] = static_cast<unsigned char>(parityFlag);
+        //？？
+        if (obs->SatObs[m].P[freq] != 0.0 || obs->SatObs[m].L[freq] != 0.0)
+        {
+            obs->SatObs[m].Valid = true;
+        }
     }
 
     for (int k = 0; k < MAXCHANNUM; ++k)
     {
-        if (obs->SatObs[k].System != UNKS && obs->SatObs[k].Prn != 0) obs->SatNum++;
+        if (obs->SatObs[k].System != UNKS && obs->SatObs[k].Prn != 0) obs->SatNum++;//统计有效卫星数量
     }
 
     return 1;
 }
 
-// BDSEPHEMERIS(B)
+// BDSEPHEMERIS(B)星历解码
 int decode_bdsephem(unsigned char* buff, GPSEPHREC* eph)
 {
     const unsigned short msgLen = UI2(buff + 8);
@@ -237,44 +219,44 @@ int decode_bdsephem(unsigned char* buff, GPSEPHREC* eph)
     unsigned char* p = buff + 28;
     const unsigned int prn = UI4(p + 0);
     if (prn == 0 || prn > MAXBDSNUM) return 0;
-    GPSEPHREC& e = eph[prn - 1];
+    GPSEPHREC& e = eph[prn - 1];//当前星历地址
     e.Sys = BDS;
     e.PRN = static_cast<unsigned short>(prn);
 
     const short week = static_cast<short>(UI4(p + 4));
-    e.SVAccuracy = R8(p + 8);
-    e.SVHealth = static_cast<short>(UI4(p + 16));
+    e.SVAccuracy = R8(p + 8);//卫星精度
+    e.SVHealth = static_cast<short>(UI4(p + 16));//卫星健康状态
 
-    e.TGD1 = R8(p + 20);
+    e.TGD1 = R8(p + 20);//不同频点群时延改正
     e.TGD2 = R8(p + 28);
 
-    e.IODC = static_cast<double>(UI4(p + 36));
-    e.TOC.Week = week;
+    e.IODC = static_cast<double>(UI4(p + 36));//钟参数期号
+    e.TOC.Week = week;//钟差参数参考时刻
     e.TOC.SecOfWeek = static_cast<double>(UI4(p + 40));
 
-    e.ClkBias = R8(p + 44);
-    e.ClkDrift = R8(p + 52);
-    e.ClkDriftRate = R8(p + 60);
+    e.ClkBias = R8(p + 44);//卫星钟偏
+    e.ClkDrift = R8(p + 52);//卫星钟飘
+    e.ClkDriftRate = R8(p + 60);//卫星钟飘率
 
-    e.IODE = static_cast<double>(UI4(p + 68));
-    e.TOE.Week = week;
+    e.IODE = static_cast<double>(UI4(p + 68));//星历数据期号
+    e.TOE.Week = week;//轨道参数参考时刻
     e.TOE.SecOfWeek = static_cast<double>(UI4(p + 72));
 
-    e.SqrtA = R8(p + 76);
-    e.e = R8(p + 84);
-    e.omega = R8(p + 92);
-    e.DeltaN = R8(p + 100);
-    e.M0 = R8(p + 108);
-    e.OMEGA = R8(p + 116);
-    e.OMEGADot = R8(p + 124);
-    e.i0 = R8(p + 132);
-    e.iDot = R8(p + 140);
+    e.SqrtA = R8(p + 76);//半长轴平方根
+    e.e = R8(p + 84);//偏心率
+    e.omega = R8(p + 92);//近地点角距
+    e.DeltaN = R8(p + 100);//平均角速度改正
+    e.M0 = R8(p + 108);//参考时刻平近点角
+    e.OMEGA = R8(p + 116);//升交点经度
+    e.OMEGADot = R8(p + 124);//升交点精度变化率
+    e.i0 = R8(p + 132);//轨道倾角
+    e.iDot = R8(p + 140);//倾角变化率
 
-    e.Cuc = R8(p + 148);
+    e.Cuc = R8(p + 148);//纬度幅角正余弦改正
     e.Cus = R8(p + 156);
-    e.Crc = R8(p + 164);
+    e.Crc = R8(p + 164);//径向项正余弦改正
     e.Crs = R8(p + 172);
-    e.Cic = R8(p + 180);
+    e.Cic = R8(p + 180);//倾角正余弦改正
     e.Cis = R8(p + 188);
 
     return 1;
@@ -346,8 +328,8 @@ int decode_psrpos(unsigned char* buff, PPRESULT* pos)
     BLH blh;
     XYZ xyz;
 
-    blh.b = R8(p + 8) * PAI / 180;
-    blh.l = R8(p + 16) * PAI / 180;
+    blh.b = R8(p + 8) * Rad;
+    blh.l = R8(p + 16) * Rad;
     blh.h = R8(p + 24) + R4(p + 32);
 
     BLHToXYZ(&blh, &xyz, R_WGS84, F_WGS84);

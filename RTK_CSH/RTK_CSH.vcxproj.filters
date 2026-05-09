@@ -39,6 +39,9 @@
     <ClCompile Include="SPP_SPV.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="sockets.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="RTK_Structs.h">

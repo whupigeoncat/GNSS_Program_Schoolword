@@ -7,15 +7,15 @@ double Hopfield(const double H, const double Elev)
 	if (H < 0 || H>3e4)	return 0;
 	//2. 输入与输出参数
 	//	气象参数、测站高度、高度角
-	double RH = RH0_Hop * exp(-0.0006396 * (H - H0_Hop));
-	p = p0_Hop * pow((1 - 0.0000226 * (H - H0_Hop)), 5.225);
-	T = T0_Hop - 0.0065 * (H - H0_Hop);
+	double RH = RH0_Hop * exp(-0.0006396 * (H - H0_Hop));//测站相对湿度
+	p = p0_Hop * pow((1 - 0.0000226 * (H - H0_Hop)), 5.225);//测站气压
+	T = T0_Hop - 0.0065 * (H - H0_Hop);//测站干温
 	e = RH * exp(-37.2465 + 0.213166 * T - 0.000256908 * T * T);
 	hw = 11000;
 	hd = 40136 + 148.72 * (T0_Hop - 273.16);
 	Kw = 155.2 * 1e-7 * (4810 / (T * T)) * e * (hw - H);
 	Kd = 155.2 * 1e-7 * (p / T) * (hd - H);
-	delta_Trop = Kd / (sin(sqrt(Elev * Elev + 6.25) * PAI / 180.0)) + Kw / (sin(sqrt(Elev * Elev + 2.25) * PAI / 180.0));
+	delta_Trop = Kd / (sin(sqrt(Elev * Elev + 6.25) * Rad)) + Kw / (sin(sqrt(Elev * Elev + 2.25) * Rad));//对流层延迟
 
 	return delta_Trop;
 	//	3. 返回值
@@ -25,29 +25,32 @@ double Hopfield(const double H, const double Elev)
 	//	➢测站高度不在对流层范围，直接输出为0
 }
 
-void DetectOutlier(EPOCHOBS* Obs)  // 线性组合探测粗差
+//线性组合探测粗差函数
+void DetectOutlier(EPOCHOBS* Obs)
 {
 	if (Obs == nullptr) return;
 
 	const double GF_THRES = 0.05; // m
 	const double MW_THRES = 3.0;  // m
 
+	int i, j;
 	// 边界保护，防止 SatNum 异常导致越界
 	int satCount = Obs->SatNum;
 	if (satCount < 0) satCount = 0;
 	if (satCount > MAXCHANNUM) satCount = MAXCHANNUM;
 
-	MWGF CurComObs[MAXCHANNUM] = {};
-	MWGF NextComObs[MAXCHANNUM] = {};
+	MWGF CurComObs[MAXCHANNUM] = {};//存放当前历元计算结果
+	memset(CurComObs, 0, sizeof(MWGF) * MAXCHANNUM);
 
-	for (int i = 0; i < satCount; i++)
+	for (i = 0; i < satCount; i++)
 	{
 		SATOBS& sat = Obs->SatObs[i];
 		sat.Valid = false;
 
 		// 1) 观测完整性检查
-		if (fabs(sat.P[0]) < 1e-8 || fabs(sat.P[1]) < 1e-8 || fabs(sat.L[0]) < 1e-8 || fabs(sat.L[1]) < 1e-8)
+		if (fabs(sat.P[0]) < 1e-3 || fabs(sat.P[1]) < 1e-3 || fabs(sat.L[0]) < 1e-3 || fabs(sat.L[1]) < 1e-3)
 		{
+			sat.Valid = false;
 			continue;
 		}
 
@@ -69,7 +72,7 @@ void DetectOutlier(EPOCHOBS* Obs)  // 线性组合探测粗差
 			CurComObs[i].MW = (FG1_BDS * sat.L[0] - FG3_BDS * sat.L[1]) / (FG1_BDS - FG3_BDS)
 				- (FG1_BDS * sat.P[0] + FG3_BDS * sat.P[1]) / (FG1_BDS + FG3_BDS);
 			CurComObs[i].PIF = (FG1_BDS * FG1_BDS * sat.P[0] - FG3_BDS * FG3_BDS * sat.P[1])
-				/ (FG1_BDS * FG1_BDS - FG3_BDS * FG3_BDS);
+				/ (FG1_BDS * FG1_BDS - FG3_BDS * FG3_BDS);//伪距IF组合
 		}
 		else
 		{
@@ -78,44 +81,32 @@ void DetectOutlier(EPOCHOBS* Obs)  // 线性组合探测粗差
 
 		// 3) 与上一历元同星比较
 		bool foundPrev = false; // 是否找到上一历元同星（不代表通过阈值)
-		for (int j = 0; j < MAXCHANNUM; j++)
+		for (j = 0; j < MAXCHANNUM; j++)
 		{
-			if (Obs->ComObs[j].Sys == CurComObs[i].Sys && Obs->ComObs[j].Prn == CurComObs[i].Prn)
+			if (Obs->ComObs[j].Prn == sat.Prn && Obs->ComObs[j].Sys == sat.System)
 			{
 				foundPrev = true;
-
-				double dGF = fabs(CurComObs[i].GF - Obs->ComObs[j].GF);
-				double dMW = fabs(CurComObs[i].MW - Obs->ComObs[j].MW);
-
-				if (dGF < GF_THRES && dMW < MW_THRES)
-				{
-					sat.Valid = true;
-					CurComObs[i].MW = (Obs->ComObs[j].MW * Obs->ComObs[j].n + CurComObs[i].MW) / (Obs->ComObs[j].n + 1);
-					CurComObs[i].n = Obs->ComObs[j].n + 1;
-				}
-				else
-				{
-					sat.Valid = false;
-				}
 				break;
 			}
 		}
 
-		// 未找到上一历元同星：作为新弧段放行
-		if (!foundPrev)
+		if (foundPrev == false) continue;
+
+		double dGF, dMW;
+		dGF = CurComObs[i].GF - Obs->ComObs[j].GF;
+		dMW = CurComObs[i].MW - Obs->ComObs[j].MW;
+
+		if (dGF > GF_THRES || dMW > MW_THRES)
+		{
+			sat.Valid = false;
+		}
+		else
 		{
 			sat.Valid = true;
+			CurComObs[i].MW = (Obs->ComObs[j].n * Obs->ComObs[j].MW + CurComObs[i].MW) / (Obs->ComObs[j].n + 1);
+			CurComObs[i].n = Obs->ComObs[j].n + 1;
 		}
 	}
 
-	// 仅把有效星写回历史，避免粗差污染下一历元
-	int k = 0;
-	for (int i = 0; i < satCount && k < MAXCHANNUM; i++)
-	{
-		if (Obs->SatObs[i].Valid)
-		{
-			NextComObs[k++] = CurComObs[i];
-		}
-	}
-	memcpy(Obs->ComObs, NextComObs, sizeof(NextComObs));
+	memcpy(Obs->ComObs, CurComObs, sizeof(MWGF) * MAXCHANNUM);
 }

@@ -1,5 +1,5 @@
 /****************************************************************************
-目的：    定义GPS+BDS RTK软件需要的常量和结构体
+目的：    定义GPS+BDS RT 软件需要的常量和结构体
 编写时间：2022.1.10
 作者：    王甫红
 版本:     V1.0
@@ -376,7 +376,6 @@ struct ROVERCFGINFO   // 配置信息
 };
 
 bool ReadRTKConfigInfo( const char FName[], ROVERCFGINFO& cfg );
-bool DataReceive(const std::string& filepath);
 
 bool MatrixMultiply( int m1, int n1, int m2, int n2, const double M1[], const double M2[], double M3[] );
 bool MatrixMultiply_APAT( int m1, int n1, int n, const double M1[], const double P[], double M2[] );
@@ -423,7 +422,7 @@ unsigned int crc32(const unsigned char *buff, int len);
 bool CompSatClkOff( const int Prn, const GNSSSys Sys, const GPSTIME* t, GPSEPHREC* GPSEph, GPSEPHREC* BDSEph, SATMIDRES* Mid);
 bool CompGPSSatPVT( const int Prn, const GPSTIME* t, const GPSEPHREC* Eph, SATMIDRES* Mid);
 bool CompBDSSatPVT( const int Prn, const GPSTIME* t, const GPSEPHREC* Eph, SATMIDRES* Mid);
-void ComputeGPSSatOrbitAtSignalTrans(const EPOCHOBS* Epk, GPSEPHREC* GPSEph, GPSEPHREC* BDSEph, double RcvPos[3], SATMIDRES* MidRes);
+bool ComputeSatOrbitAtSignalTrans(const EPOCHOBS* Epk, GPSEPHREC* GPSEph, GPSEPHREC* BDSEph, double RcvPos[3], SATMIDRES* MidRes, int satIndex, double Pobs);//信号发射时刻卫星位置
 double Hopfield(const double H,const double Elev);
 
 // SPP & SPV

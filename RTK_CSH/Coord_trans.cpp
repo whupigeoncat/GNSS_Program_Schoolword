@@ -111,7 +111,7 @@ bool CompEnudPos(const XYZ* xyz0, const XYZ* xyzs, NEU* dneu)
 	return true;
 }
 
-//卫星高度角方位角计算
+//卫星高度角方位角计算,弧度制
 bool CompSatEIAz(const XYZ* xyz0, const XYZ* xyzs, double* Elev, double* Azim)
 {
 	if (xyz0 == nullptr || xyzs == nullptr || Elev == nullptr || Azim == nullptr) return false;
