@@ -17,6 +17,9 @@ int mode = 0;
 
 int main()
 {
+    ofstream out("SPP_Result.txt");
+    out << fixed << setprecision(4);
+
 	cout << "输入模式\n0=文件读取\n1=实时TCP\n";
 	if (!(cin >> mode))
 	{
@@ -70,6 +73,10 @@ int main()
                         << " Satnum" << result.AllSatNum
                         << " Bdsnum" << result.BDSSatNum
                         << " Gpsnum" << result.GPSSatNum << "\n";
+
+                    out << result.Time.SecOfWeek << " "
+                        << result.Position[0] << " " << result.Position[1] << " " << result.Position[2] << " "
+                        << result.GPSSatNum << " " << result.BDSSatNum << " " << result.PDOP << "\n";
                 }
             }
 
@@ -136,6 +143,10 @@ int main()
                             << " Satnum" << result.AllSatNum
                             << " Bdsnum" << result.BDSSatNum
                             << " Gpsnum" << result.GPSSatNum << "\n";
+
+                        out << result.Time.SecOfWeek << " "
+                            << result.Position[0] << " " << result.Position[1] << " " << result.Position[2] << " "
+                            << result.GPSSatNum << " " << result.BDSSatNum << " " << result.PDOP << "\n";
                     }
                 }
             }
