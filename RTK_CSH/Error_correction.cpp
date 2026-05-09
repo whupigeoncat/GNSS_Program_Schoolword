@@ -96,7 +96,7 @@ void DetectOutlier(EPOCHOBS* Obs)
 		dGF = CurComObs[i].GF - Obs->ComObs[j].GF;
 		dMW = CurComObs[i].MW - Obs->ComObs[j].MW;
 
-		if (dGF > GF_THRES || dMW > MW_THRES)
+		if (fabs(dGF) > GF_THRES || fabs(dMW) > MW_THRES)
 		{
 			sat.Valid = false;
 		}

@@ -50,6 +50,7 @@ int main()
 
             if (val == 43) // RANGEB观测
             {
+                DetectOutlier(&Obs);
                 memcpy(raw.GpsEph, GpsEph, sizeof(GpsEph));
                 memcpy(raw.BdsEph, BdsEph, sizeof(BdsEph));
 
@@ -115,6 +116,7 @@ int main()
 
                 if (val == 43) // RANGEB
                 {
+                    DetectOutlier(&Obs);
                     memcpy(raw.GpsEph, GpsEph, sizeof(GpsEph));
                     memcpy(raw.BdsEph, BdsEph, sizeof(BdsEph));
 

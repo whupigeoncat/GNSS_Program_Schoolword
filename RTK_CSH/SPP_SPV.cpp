@@ -131,6 +131,7 @@ bool SPP(EPOCHOBS* Epoch, RAWDAT* Raw, PPRESULT* Result)
 			SATOBS& sat = Epoch->SatObs[i];
 			if (sat.System != GPS && sat.System != BDS) continue;
 			if (sat.Prn <= 0) continue;
+			if (!sat.Valid) continue;//粗差探测
 
 			double rcvPos[3] = { xr(0), xr(1), xr(2) };
 			SATMIDRES mid;
