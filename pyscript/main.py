@@ -10,7 +10,9 @@ plt.rcParams['axes.unicode_minus'] = False
 #  配置区
 # ============================================================
 INPUT_FILE = "RTK_CSH/SPP_Result.txt"   # 从 C++ 程序输出的结果文件
-OUTPUT_PNG  = "enu_error.png"    # 输出的散点图
+OUTPUT_PNG  = "enu_error_continuous.png"    # 输出的散点图
+OUTPUT_TIMESERIES_PNG = "enu_timeseries_report.png"
+OUTPUT_SCATTER_PNG = "enu_scatter_report.png"
 # 文件格式（每行）：
 #   SecOfWeek  X  Y  Z  GPSSatNum  BDSSatNum  PDOP
 
@@ -72,6 +74,115 @@ def comp_enu_error(x0, y0, z0, xs, ys, zs):
     return dE, dN, dU
 
 
+def unwrap_sec_of_week(t):
+    """Convert GPS sec-of-week to a continuous time axis."""
+    t_cont = np.array(t, dtype=float, copy=True)
+    week_offset = 0.0
+    for i in range(1, len(t_cont)):
+        if t_cont[i] + week_offset < t_cont[i - 1]:
+            week_offset += 604800.0
+        t_cont[i] += week_offset
+    return t_cont
+
+
+def rms(err):
+    return np.sqrt(np.mean(err ** 2))
+
+
+def save_report_timeseries(t_hour, e_err, n_err, u_err):
+    series = [
+        ("E方向误差 / m", e_err, "#2563eb", "E"),
+        ("N方向误差 / m", n_err, "#16a34a", "N"),
+        ("U方向误差 / m", u_err, "#dc2626", "U"),
+    ]
+
+    fig, axes = plt.subplots(3, 1, figsize=(11, 7), sharex=True)
+    fig.suptitle("GPS/BDS 双频 SPP 定位误差时间序列", fontsize=16, fontweight="bold")
+
+    for ax, (ylabel, err, color, name) in zip(axes, series):
+        ax.scatter(t_hour, err, s=1.2, color=color, alpha=0.42, edgecolors="none")
+        ax.axhline(0, color="#6b7280", lw=0.8)
+        ax.grid(True, color="#e5e7eb", lw=0.7)
+        ax.set_ylabel(ylabel, fontsize=11)
+        ax.set_xlim(t_hour[0], t_hour[-1])
+
+        ymax = np.percentile(np.abs(err), 99.7) * 1.25
+        ymax = max(ymax, rms(err) * 3.0, 0.5)
+        ax.set_ylim(-ymax, ymax)
+        ax.text(
+            0.985,
+            0.88,
+            f"{name} RMS = {rms(err):.3f} m",
+            transform=ax.transAxes,
+            ha="right",
+            va="top",
+            fontsize=10,
+            bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="#d1d5db", alpha=0.92),
+        )
+
+    axes[-1].set_xlabel("观测时间 / h", fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.savefig(OUTPUT_TIMESERIES_PNG, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
+def save_report_scatter(e_err, n_err, u_err):
+    h_err = np.sqrt(e_err ** 2 + n_err ** 2)
+    h_rms = np.sqrt(np.mean(h_err ** 2))
+    d3_rms = np.sqrt(np.mean(e_err ** 2 + n_err ** 2 + u_err ** 2))
+
+    fig, axes = plt.subplots(1, 2, figsize=(11, 5))
+    fig.suptitle("GPS/BDS 双频 SPP 定位误差分布", fontsize=16, fontweight="bold")
+
+    ax = axes[0]
+    ax.scatter(e_err, n_err, s=2.0, color="#7c3aed", alpha=0.35, edgecolors="none")
+    ax.axhline(0, color="#6b7280", lw=0.8)
+    ax.axvline(0, color="#6b7280", lw=0.8)
+    ax.grid(True, color="#e5e7eb", lw=0.7)
+    ax.set_xlabel("E方向误差 / m")
+    ax.set_ylabel("N方向误差 / m")
+    ax.set_aspect("equal", adjustable="box")
+    lim = np.percentile(np.sqrt(e_err ** 2 + n_err ** 2), 99.5) * 1.2
+    lim = max(lim, 1.0)
+    ax.set_xlim(-lim, lim)
+    ax.set_ylim(-lim, lim)
+    ax.text(
+        0.03,
+        0.96,
+        f"HRMS = {h_rms:.3f} m",
+        transform=ax.transAxes,
+        ha="left",
+        va="top",
+        fontsize=10,
+        bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="#d1d5db", alpha=0.92),
+    )
+
+    ax = axes[1]
+    bins = 70
+    ax.hist(e_err, bins=bins, density=True, alpha=0.55, color="#2563eb", label=f"E RMS={rms(e_err):.3f} m")
+    ax.hist(n_err, bins=bins, density=True, alpha=0.55, color="#16a34a", label=f"N RMS={rms(n_err):.3f} m")
+    ax.hist(u_err, bins=bins, density=True, alpha=0.42, color="#dc2626", label=f"U RMS={rms(u_err):.3f} m")
+    ax.axvline(0, color="#6b7280", lw=0.8)
+    ax.grid(True, color="#e5e7eb", lw=0.7)
+    ax.set_xlabel("误差 / m")
+    ax.set_ylabel("概率密度")
+    ax.legend(frameon=True, fontsize=9)
+    ax.text(
+        0.97,
+        0.96,
+        f"3D RMS = {d3_rms:.3f} m",
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        fontsize=10,
+        bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="#d1d5db", alpha=0.92),
+    )
+
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
+    fig.savefig(OUTPUT_SCATTER_PNG, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
 # ============================================================
 #  主程序
 # ============================================================
@@ -86,6 +197,7 @@ def main():
     gps_n = data[:, 4].astype(int)
     bds_n = data[:, 5].astype(int)
     pdop  = data[:, 6]
+    t_hour = (unwrap_sec_of_week(t) - t[0]) / 3600.0
 
     n_epochs = len(t)
     print(f"历元总数: {n_epochs}")
@@ -121,27 +233,32 @@ def main():
     print(f"三维 RMS = {np.sqrt(np.mean(e_err**2 + n_err**2 + u_err**2)):.3f} m")
 
     # 5. 散点图
+    save_report_timeseries(t_hour, e_err, n_err, u_err)
+    save_report_scatter(e_err, n_err, u_err)
+    print(f"报告版时间序列图已保存: {OUTPUT_TIMESERIES_PNG}")
+    print(f"报告版误差分布图已保存: {OUTPUT_SCATTER_PNG}")
+
     fig, axes = plt.subplots(3, 2, figsize=(14, 10))
     fig.suptitle("SPP 定位误差分析 (GPS+BDS 双频)", fontsize=14)
 
     # 左列：时间序列散点图
     ax = axes[0, 0]
-    ax.scatter(t, e_err, s=1, c='royalblue', alpha=0.6)
+    ax.scatter(t_hour, e_err, s=1, c='royalblue', alpha=0.6)
     ax.axhline(0, color='gray', lw=0.5)
     ax.set_ylabel("E 误差 (m)")
-    ax.set_xlabel("SecOfWeek (s)")
+    ax.set_xlabel("Time (h)")
 
     ax = axes[1, 0]
-    ax.scatter(t, n_err, s=1, c='forestgreen', alpha=0.6)
+    ax.scatter(t_hour, n_err, s=1, c='forestgreen', alpha=0.6)
     ax.axhline(0, color='gray', lw=0.5)
     ax.set_ylabel("N 误差 (m)")
-    ax.set_xlabel("SecOfWeek (s)")
+    ax.set_xlabel("Time (h)")
 
     ax = axes[2, 0]
-    ax.scatter(t, u_err, s=1, c='crimson', alpha=0.6)
+    ax.scatter(t_hour, u_err, s=1, c='crimson', alpha=0.6)
     ax.axhline(0, color='gray', lw=0.5)
     ax.set_ylabel("U 误差 (m)")
-    ax.set_xlabel("SecOfWeek (s)")
+    ax.set_xlabel("Time (h)")
 
     # 右列：ENU 散点分布
     ax = axes[0, 1]
@@ -159,9 +276,9 @@ def main():
     ax.set_ylabel("U 误差 (m)")
 
     ax = axes[2, 1]
-    ax.scatter(t, pdop, s=1, c='black', alpha=0.5)
+    ax.scatter(t_hour, pdop, s=1, c='black', alpha=0.5)
     ax.set_ylabel("PDOP")
-    ax.set_xlabel("SecOfWeek (s)")
+    ax.set_xlabel("Time (h)")
 
     plt.tight_layout()
     plt.savefig(OUTPUT_PNG, dpi=200)

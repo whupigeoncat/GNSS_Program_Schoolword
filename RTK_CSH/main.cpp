@@ -14,6 +14,13 @@ using namespace std;
 
 int mode = 0;
 
+// ========== 试验配置 ==========
+int    GPS_MODE = 2;      // 0=仅GPS  1=仅BDS  2=GPS+BDS
+double ELV_CUTOFF = 0.0;   // 高度截止角（度）
+int    FREQ_MODE = 2;      // 1=单频L1/B1  2=双频IF组合
+bool   TROPO_ENABLE = true;  // true=加对流层  false=不加
+// ==============================
+
 
 int main()
 {

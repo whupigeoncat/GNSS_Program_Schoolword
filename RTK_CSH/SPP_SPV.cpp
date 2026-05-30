@@ -2,6 +2,11 @@
 #include <vector>
 #include <algorithm>
 
+extern int    GPS_MODE;
+extern double ELV_CUTOFF;
+extern int    FREQ_MODE;
+extern bool   TROPO_ENABLE;
+
 //卫星时间修正
 static void NormalizedGPSTime(GPSTIME* t)
 {
@@ -129,7 +134,11 @@ bool SPP(EPOCHOBS* Epoch, RAWDAT* Raw, PPRESULT* Result)
 		for (int i = 0; i < MAXCHANNUM; ++i)//按卫星一个一个处理观测值
 		{
 			SATOBS& sat = Epoch->SatObs[i];
-			if (sat.System != GPS && sat.System != BDS) continue;
+
+			if (GPS_MODE == 0 && sat.System != GPS) continue;     // 仅GPS
+			if (GPS_MODE == 1 && sat.System != BDS) continue;     // 仅BDS
+			if (sat.System != GPS && sat.System != BDS) continue; // 全用
+
 			if (sat.Prn <= 0) continue;
 			if (!sat.Valid) continue;//粗差探测
 
@@ -137,10 +146,15 @@ bool SPP(EPOCHOBS* Epoch, RAWDAT* Raw, PPRESULT* Result)
 			SATMIDRES mid;
 			//双频无电离层组合伪距观测方程
 			double Pobs = 0.0, Trop = 0.0, tgd_m = 0.0;
-			if (sat.System == GPS)
-				Pobs = (FG12R2 * sat.P[0] - sat.P[1]) / (FG12R2 - 1.0);
-			else
-				Pobs = (FC13R2 * sat.P[0] - sat.P[1]) / (FC13R2 - 1.0);
+			if (FREQ_MODE == 1) {
+				Pobs = sat.P[0];  // 单频伪距，直接使用L1或B1
+			}
+			else {
+				if (sat.System == GPS)
+					Pobs = (FG12R2 * sat.P[0] - sat.P[1]) / (FG12R2 - 1.0);
+				else
+					Pobs = (FC13R2 * sat.P[0] - sat.P[1]) / (FC13R2 - 1.0);
+			}
 
 			if (ComputeSatOrbitAtSignalTrans(Epoch, Raw->GpsEph, Raw->BdsEph, rcvPos, &mid, i, Pobs))
 			{
@@ -155,6 +169,7 @@ bool SPP(EPOCHOBS* Epoch, RAWDAT* Raw, PPRESULT* Result)
 
 				if (CompSatEIAz(&xr_xyz, &xs_xyz, &elev, &az))
 				{
+					if (elev < ELV_CUTOFF * Rad) continue;
 					double elev_deg = elev / Rad;
 					Trop = Hopfield(xr_blh.h, elev_deg);//对流层延迟
 				}
@@ -199,7 +214,7 @@ bool SPP(EPOCHOBS* Epoch, RAWDAT* Raw, PPRESULT* Result)
 			double sat_dti_m = C_Light * mid.SatClkOft;//卫星钟差
 			double bSys = (sat.System == GPS) ? bGPS : bBDS;//接收机钟差
 
-			double wi = Pobs - rho + sat_dti_m - bSys - Trop - tgd_m;//残差
+			double wi = Pobs - rho + sat_dti_m - bSys - (TROPO_ENABLE ? Trop : 0.0) - tgd_m;//残差
 
 			B(nObs, 0) = l;
 			B(nObs, 1) = m;
