@@ -130,13 +130,16 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Data_IO.cpp" />
     <ClCompile Include="Decoding.cpp" />
     <ClCompile Include="Error_correction.cpp" />
+    <ClCompile Include="lambda.cpp" />
     <ClCompile Include="matrix_inv.cpp" />
     <ClCompile Include="main.cpp">
       <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\asus\Documents\Libraries\eigen-5.0.0</AdditionalIncludeDirectories>
     </ClCompile>
     <ClCompile Include="Coord_trans.cpp" />
+    <ClCompile Include="RTK_RelPos.cpp" />
     <ClCompile Include="Sat_pos.cpp" />
     <ClCompile Include="sockets.cpp" />
     <ClCompile Include="SPP_SPV.cpp" />
@@ -146,6 +149,8 @@
     <ClInclude Include="RTK_Structs.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\..\..\..\DATA\OEM719原始数据\Zero-baseline\oem719-202203031500-1.bin" />
+    <None Include="..\..\..\..\DATA\OEM719原始数据\Zero-baseline\oem719-202203031500-2.bin" />
     <None Include="..\Data\oem719-202603111200.bin" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

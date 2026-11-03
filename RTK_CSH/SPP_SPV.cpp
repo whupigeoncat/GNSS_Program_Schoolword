@@ -169,9 +169,16 @@ bool SPP(EPOCHOBS* Epoch, RAWDAT* Raw, PPRESULT* Result)
 
 				if (CompSatEIAz(&xr_xyz, &xs_xyz, &elev, &az))
 				{
-					if (elev < ELV_CUTOFF * Rad) continue;
+					Epoch->SatPVT[i].Elevation = elev;    // 存回高度角
+					Epoch->SatPVT[i].Azimuth = az;        // 存回方位角
+					if (elev < ELV_CUTOFF * Rad)
+					{
+						Epoch->SatPVT[i].Valid = false;
+						continue;
+					}
 					double elev_deg = elev / Rad;
-					Trop = Hopfield(xr_blh.h, elev_deg);//对流层延迟
+					Trop = Hopfield(xr_blh.h, elev_deg);
+					Epoch->SatPVT[i].TropCorr = Trop;     // 存回对流层延迟
 				}
 			}
 			else

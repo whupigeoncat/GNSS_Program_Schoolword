@@ -1,0 +1,72 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "变量跟踪②：历元配对与输出",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "legend": {
+      "entries": {
+        "frontend": { "label": "流泵浦" },
+        "backend": { "label": "配对判定" },
+        "database": { "label": "数据对象" },
+        "cloud": { "label": "下游（未实现）" },
+        "external": { "label": "终止状态" }
+      }
+    }
+  },
+  "lanes": [
+    { "id": "rov", "label": "流动站流" },
+    { "id": "bas", "label": "基站流" },
+    { "id": "out", "label": "配对判定与输出" }
+  ],
+  "phases": [
+    { "id": "ready", "label": "流动站就绪", "fromCol": 0, "toCol": 1 },
+    { "id": "decide", "label": "dt 判定", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "emit", "label": "追平与输出", "fromCol": 4, "toCol": 5 }
+  ],
+  "nodes": [
+    { "id": "rwait", "lane": "rov", "col": 0, "type": "frontend", "label": "PumpStream 流动站", "sublabel": "recv→FeedNovData→取帧", "tag": "实时 select 100ms", "width": 124 },
+    { "id": "repk", "lane": "rov", "col": 1, "type": "database", "label": "RovEpk 就绪", "sublabel": "流动站观测历元", "tag": "返回 1" },
+
+    { "id": "pair", "lane": "out", "col": 2, "type": "backend", "label": "PairEpoch", "sublabel": "dt = GetDiffTime(Rov−Bas)", "tag": "跨周 · 阈 0.5/5 s", "width": 110 },
+    { "id": "branch", "lane": "out", "col": 3, "type": "backend", "label": "dt 判定", "sublabel": "早→丢弃 / 晚→读基站 / 达标", "tag": "比较 RovEpk·BasEpk", "width": 110 },
+
+    { "id": "bpump", "lane": "bas", "col": 4, "type": "frontend", "label": "读基站历元", "sublabel": "取 BasEpk；BESTPOS→rb", "tag": "EOF/断连 → 返回 −1", "width": 150 },
+    { "id": "end", "lane": "bas", "col": 5, "type": "external", "label": "RTK 处理结束", "sublabel": "基站数据读完 / 断连" },
+
+    { "id": "rawdat", "lane": "out", "col": 4, "type": "database", "label": "RAWDAT 组装", "sublabel": "BasEpk+RovEpk+星历+BasPos", "tag": "BasPosValid=true", "width": 150 },
+    { "id": "rtk", "lane": "out", "col": 5, "type": "cloud", "label": "RTK 解算", "sublabel": "单差→周跳→双差→浮点→固定", "tag": "未实现", "width": 130 }
+  ],
+  "edges": [
+    { "id": "e-wait-repk", "from": "rwait", "to": "repk", "label": "MsgId 43", "variant": "emphasis" },
+    { "id": "e-repk-pair", "from": "repk", "to": "pair", "label": "RovEpk", "variant": "emphasis" },
+    { "id": "e-pair-branch", "from": "pair", "to": "branch", "label": "dt", "variant": "emphasis" },
+    { "id": "e-branch-discard", "from": "branch", "to": "repk", "label": "丢弃该历元", "variant": "dashed", "role": "branch" },
+    { "id": "e-branch-bpump", "from": "branch", "to": "bpump", "label": "读基站", "variant": "default", "role": "branch" },
+    { "id": "e-bpump-pair", "from": "bpump", "to": "pair", "label": "重新配对", "variant": "dashed", "role": "return" },
+    { "id": "e-branch-rawdat", "from": "branch", "to": "rawdat", "label": "配对成功", "variant": "emphasis" },
+    { "id": "e-bpump-end", "from": "bpump", "to": "end", "label": "EOF / 断连", "variant": "dashed", "role": "error" },
+    { "id": "e-rawdat-rtk", "from": "rawdat", "to": "rtk", "label": "RAWDAT", "variant": "dashed" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "配对变量",
+      "items": [
+        "dt = Δ周 × 604800 + Δ周内秒（跨周处理）",
+        "阈值：文件 0.5 s；实时 5 s（select 等待）",
+        "BasPosValid：首个有效 BESTPOS 置 true，锁定 rb"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "循环与终止",
+      "items": [
+        "流动站早（dt<0）→ 丢弃该历元，继续取下一个",
+        "流动站晚（dt>阈）→ 读基站历元并重新配对",
+        "基站 EOF/断连→返回 −1；实时等待超时→返回 0"
+      ]
+    }
+  ]
+}

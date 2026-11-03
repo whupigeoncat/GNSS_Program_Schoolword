@@ -1,0 +1,66 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "变量跟踪①：流缓冲与帧解码",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "legend": {
+      "entries": {
+        "frontend": { "label": "流缓冲泵浦" },
+        "backend": { "label": "帧解析步骤" },
+        "database": { "label": "解码产物" }
+      }
+    }
+  },
+  "lanes": [
+    { "id": "buf", "label": "PumpStream / 流缓冲" },
+    { "id": "parse", "label": "ParseNovMsg / 帧解析" },
+    { "id": "dec", "label": "decode_* / 消息解码" }
+  ],
+  "phases": [
+    { "id": "write", "label": "写入缓冲", "fromCol": 0, "toCol": 1 },
+    { "id": "stream", "label": "逐帧解析与解码", "fromCol": 2, "toCol": 5, "variant": "emphasis" }
+  ],
+  "nodes": [
+    { "id": "read", "lane": "buf", "col": 0, "type": "frontend", "label": "读数据块", "sublabel": "n = fread / recv(tmp)", "tag": "n≤0 → 返回 −1" },
+    { "id": "feed", "lane": "buf", "col": 1, "type": "frontend", "label": "FeedNovData", "sublabel": "dec->Buff+Len ← tmp", "tag": "满 → nSyncLoss++" },
+
+    { "id": "scan", "lane": "parse", "col": 2, "type": "backend", "label": "帧定位", "sublabel": "i 滑动至 AA 44 12", "tag": "读 Buff、Len" },
+    { "id": "head", "lane": "parse", "col": 3, "type": "backend", "label": "读头与长度", "sublabel": "MsgId · MsgLen · frameLen", "tag": "不足 → 返回 0", "width": 110 },
+    { "id": "crc", "lane": "parse", "col": 4, "type": "backend", "label": "CRC32 校验", "sublabel": "crc32(Msg) 对帧尾 4B", "tag": "nBadCrc++ · i++" },
+    { "id": "disp", "lane": "parse", "col": 5, "type": "backend", "label": "分发与收尾", "sublabel": "switch(MsgId) · memmove", "tag": "Len=remain · 返回 MsgId" },
+
+    { "id": "dec", "lane": "dec", "col": 5, "type": "database", "label": "消息解码 decode_*", "sublabel": "RANGEB→EPOCHOBS；其余→PPR·Eph", "tag": "nRange / nPos / nGeph / nBeph++", "width": 190 }
+  ],
+  "edges": [
+    { "id": "e-read-feed", "from": "read", "to": "feed", "label": "tmp、n", "variant": "emphasis" },
+    { "id": "e-feed-scan", "from": "feed", "to": "scan", "label": "dec->Buff、Len", "variant": "emphasis" },
+    { "id": "e-scan-head", "from": "scan", "to": "head", "variant": "default" },
+    { "id": "e-head-crc", "from": "head", "to": "crc", "variant": "default" },
+    { "id": "e-crc-disp", "from": "crc", "to": "disp", "label": "校验通过", "variant": "emphasis" },
+    { "id": "e-crc-retry", "from": "crc", "to": "scan", "label": "失败：i++ 重找同步头", "variant": "dashed", "role": "branch" },
+    { "id": "e-disp-dec", "from": "disp", "to": "dec", "label": "MsgId 43 / 42 / 7 / 1696", "variant": "emphasis" },
+    { "id": "e-disp-loop", "from": "disp", "to": "feed", "label": "循环取帧直到 MsgId 43", "variant": "dashed", "role": "return" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "变量读写",
+      "items": [
+        "dec->Len：FeedNovData 累加；帧移出后 Len = remain",
+        "i / MsgId / MsgLen / frameLen：ParseNovMsg 局部量",
+        "统计计数：nRange·nGeph·nBeph·nPos·nBadCrc·nSyncLoss"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "返回码语义",
+      "items": [
+        "1 = 本流解出 MsgId 43（RANGEB 历元就绪）",
+        "0 = 本轮无完整帧（半帧 / 未同步），继续读数据",
+        "−1 = 读失败 / EOF / 通信中断"
+      ]
+    }
+  ]
+}

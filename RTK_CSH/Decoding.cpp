@@ -32,9 +32,8 @@ unsigned int UI4(unsigned char* p) { unsigned int r; memcpy(&r, p, 4); return r;
 short   I2(unsigned char* p) { short  r; memcpy(&r, p, 2); return r; }
 unsigned short UI2(unsigned char* p) { unsigned short r; memcpy(&r, p, 2); return r; }
 
-
-//还没有TCP模式
-int DecodeNovOem7Dat(unsigned char Buff[], int& Len, EPOCHOBS* obs, GPSEPHREC geph[], GPSEPHREC beph[])
+//解码
+static int ParseNovMsg(unsigned char Buff[], int& Len, EPOCHOBS* obs, GPSEPHREC geph[], GPSEPHREC beph[],PPRESULT* pos,NOVDECODER* stat)
 {
     int i = 0;
     //数据头的同步字符，消息长度
@@ -64,20 +63,30 @@ int DecodeNovOem7Dat(unsigned char Buff[], int& Len, EPOCHOBS* obs, GPSEPHREC ge
 
         if (crc32(Msg, 28 + MsgLen) != UI4(Msg + 28 + MsgLen))//CRC校验
         {
+            if (stat) stat->nBadCrc++;
             ++i;
             continue;
         }
 
         switch (MsgId)//确定消息类型
         {
+        case 42://基站坐标来源
+            if(pos) decode_bestpos(Msg, pos);
+            if (stat)stat->nPos++;
+            break;
         case 43:   // RANGEB
-            decode_rangeb_oem7(Msg, obs);
+            if (obs) {
+                decode_rangeb_oem7(Msg, obs);
+                if (stat) stat->nRange++;
+            }
             break;
         case 7:    // GPSEPHEM(B)
             decode_gpsephem(Msg, geph);
+            if (stat) stat->nGeph++;
             break;
         case 1696: // BDSEPHEMERIS(B)
             decode_bdsephem(Msg, beph);
+            if (stat) stat->nBeph++;
             break;
         default:
             break;
@@ -106,6 +115,42 @@ int DecodeNovOem7Dat(unsigned char Buff[], int& Len, EPOCHOBS* obs, GPSEPHREC ge
     }
     Len = remain;                  // 返回给上层（主循环）继续拼接
     return 0; //本次未解出完整有效消息
+}
+
+//旧解码入口
+int DecodeNovOem7Dat(unsigned char Buff[], int& Len, EPOCHOBS* obs, GPSEPHREC geph[], GPSEPHREC beph[])
+{
+    return ParseNovMsg(Buff, Len, obs, geph, beph, nullptr, nullptr);
+}
+
+//初始化流上下文
+void InitNovDecoder(NOVDECODER* dec, int SourceId)
+{
+    if (!dec) return;
+    dec->Len = 0;
+    dec->SourceId = SourceId;
+}
+
+//把新收到的原始字节追加到流缓冲区Buff，缓冲区快满的时候整体清零重新找同步头，返回实际接受字节数
+int FeedNovData(NOVDECODER* dec, const unsigned char* data, int n)
+{
+    if (!dec || !data || n <= 0) return 0;
+    if (n > MAXRAWLEN) n = MAXRAWLEN;
+    if (dec->Len + n > MAXRAWLEN)//缓冲满且无完整帧：失步，整体丢弃重新找同步头
+    {
+        dec->Len = 0;
+        dec->nSyncLoss++;
+    }
+    memcpy(dec->Buff + dec->Len, data, n);
+    dec->Len += n;
+    return n;
+}
+
+//调用解码函数
+int DecodeNovStream(NOVDECODER* dec, EPOCHOBS* obs, GPSEPHREC geph[], GPSEPHREC beph[], PPRESULT* pos)
+{
+    if (!dec) return 0;
+    return ParseNovMsg(dec->Buff, dec->Len, obs, geph, beph, pos, dec);
 }
 
 int decode_rangeb_oem7(unsigned char* buff, EPOCHOBS* obs)
@@ -308,9 +353,8 @@ int decode_gpsephem(unsigned char* buff, GPSEPHREC* eph)
     return 1;
 }
 
-//还没完
-
-int decode_psrpos(unsigned char* buff, PPRESULT* pos)
+//解析出数据中给的bestpos
+int decode_bestpos(unsigned char* buff, PPRESULT* pos)
 {
     if (buff == nullptr || pos == nullptr) return 0;
 

@@ -42,6 +42,15 @@
     <ClCompile Include="sockets.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="Data_IO.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="RTK_RelPos.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="lambda.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="RTK_Structs.h">
@@ -50,6 +59,12 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Data\oem719-202603111200.bin">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="..\..\..\..\DATA\OEM719原始数据\Zero-baseline\oem719-202203031500-1.bin">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="..\..\..\..\DATA\OEM719原始数据\Zero-baseline\oem719-202203031500-2.bin">
       <Filter>资源文件</Filter>
     </None>
   </ItemGroup>

@@ -61,6 +61,10 @@
 #define p0_Hop		1013.25
 #define RH0_Hop		0.50
 
+//历元同步阈值
+#define SYN_THRESH_FILE 0.5//文件模式，0.5倍采样间隔
+#define SYN_THRESH_RT 5.0//TCP实时模式，由于网络延迟可调高
+
 
 /*坐标系结构体（数组）定义*/
 union XYZ	//空间直角坐标系
@@ -236,6 +240,22 @@ struct EPOCHOBS
     }
 };
 
+//OEM7双流解码上下文
+struct NOVDECODER
+{
+	unsigned char Buff[MAXRAWLEN];
+	int Len;
+	int SourceId;//0基站，1流动站
+	long nRange, nGeph, nBeph, nPos;
+	long nBadCrc, nSyncLoss;
+
+	NOVDECODER() {
+		Len = SourceId = 0;
+		nRange = nGeph = nBeph = nPos = nBadCrc = nSyncLoss = 0;
+		memset(Buff, 0, MAXRAWLEN);
+	}
+};
+
 /*  每颗卫星的单差观测数据定义  */
 struct SDSATOBS
 {
@@ -277,6 +297,7 @@ struct DDCOBS
 	double ResAmb[2], Ratio;          // LAMBDA浮点解中的模糊度残差
 	float  FixRMS[2];                 // 固定解定位中rms误差
 	double dPos[3];                   // 基线向量
+	double dNeu[3];//固定解NEU
 	bool bFixed;                      // true为固定，false为未固定
 
 	DDCOBS()
@@ -288,6 +309,7 @@ struct DDCOBS
 		}
 		Sats = 0;              // 双差卫星总数
 		dPos[0] = dPos[1] = dPos[2] = 0.0;
+		dNeu[0] = dNeu[1] = dNeu[2] = 0.0;
 		ResAmb[0] = ResAmb[1] =  Ratio = 0.0;
 		FixRMS[0] = FixRMS[1] = 0.0;
 		bFixed = false;
@@ -297,6 +319,46 @@ struct DDCOBS
 		}
 	}
 };
+
+//RTK浮点解结果
+struct RTKFLOATRES
+{
+	GPSTIME Time;
+	bool Valid;//浮点解成功
+	int IterNum, ObsNum, AmbNum;//迭代次数、双差观测数、模糊度参数数量
+	int AmbNumGrp[4];//各模糊度组个数GPS-L1, GPS-L2, BDS-B1I, BDS-B3I
+	short AmbSys[MAXCHANNUM * 2];//模糊度对应的系统
+	short AmbPrn[MAXCHANNUM * 2];
+	short AmbFreq[MAXCHANNUM * 2];//频率索引
+	double FloatAmb[MAXCHANNUM * 2];//双差模糊度（周）
+	//基线向量
+	double dPos[3];
+	double dNeu[3];
+
+	double Sigma0;//单位权中误差
+	double PosRMS[3];//坐标中误差XYZ
+	double Qxx[(3 + MAXCHANNUM * 2) * (3 + MAXCHANNUM * 2)];//协因数矩阵
+
+	RTKFLOATRES()
+	{
+		Valid = false;
+		IterNum = ObsNum = AmbNum = 0;
+		for (int i = 0; i < 4; i++) AmbNumGrp[i] = 0;
+		for (int i = 0; i < MAXCHANNUM * 2; i++)
+		{
+			AmbSys[i] = 0;
+			AmbPrn[i] = -1;
+			AmbFreq[i] = -1;
+			FloatAmb[i] = 0.0;
+		}
+		dPos[0] = dPos[1] = dPos[2] = 0.0;
+		dNeu[0] = dNeu[1] = dNeu[2] = 0.0;
+		Sigma0 = 0.0;
+		PosRMS[0] = PosRMS[1] = PosRMS[2] = 0.0;
+		memset(Qxx, 0, sizeof(Qxx));
+	}
+};
+
 
 /* 每个历元单点定位和测速的结果及其精度指标 */
 struct PPRESULT
@@ -321,36 +383,54 @@ struct PPRESULT
 	}
 };
 
+struct RTKEKF
+{
+	GPSTIME Time;
+	double X[3 + MAXCHANNUM * 2], P[(3 + MAXCHANNUM * 2) * (3 + MAXCHANNUM * 2)];
+	int Index[MAXCHANNUM], nSats, nPos[MAXCHANNUM];
+	int FixAmb[MAXCHANNUM];          // 时间更新后上个历元已经固定并传递的模糊度， 1=已固定，-1=未固定或有周跳
+	short AmbSys[MAXCHANNUM * 2], AmbPrn[MAXCHANNUM * 2], AmbFreq[MAXCHANNUM * 2];//模糊度列对应
+	int nAmbs;//上一历元状态内模糊度个数
+	DDCOBS DDObs, CurDDObs;           // 上一个历元和当前历元的双差观测值信息
+	SDEPOCHOBS SDObs;                 // 上一个历元的单差观测值
+	double X0[3 + MAXCHANNUM * 2], P0[(3 + MAXCHANNUM * 2) * (3 + MAXCHANNUM * 2)];  // 状态备份
+	bool IsInit;                      // 滤波是否初始化
+
+	RTKEKF() {
+		IsInit = false;
+		nSats = 0;
+		nAmbs = 0;
+		for (int i = 0; i < MAXCHANNUM; i++) nPos[i] = Index[i] = FixAmb[i] = -1;
+		for (int i = 0; i < MAXCHANNUM * 2; i++) {
+			AmbSys[i] = 0; AmbPrn[i] = -1; AmbFreq[i] = -1;
+		}
+		for (int i = 0; i < 3 + MAXCHANNUM * 2; i++) {
+			X[i] = X0[i] = 0.0;
+			for (int j = 0; j < 3 + MAXCHANNUM * 2; j++) P[i * (3 + MAXCHANNUM * 2) + j] = P0[i * (3 + MAXCHANNUM * 2) + j] = 0.0;
+		}
+	}
+};
+
 /*  RTK定位的数据定义  */
 struct RAWDAT {
 	EPOCHOBS BasEpk;
 	EPOCHOBS RovEpk;
 	SDEPOCHOBS SdObs;
 	DDCOBS DDObs;
+	RTKFLOATRES FloatRes;
+	RTKEKF Ekf;
 	GPSEPHREC GpsEph[MAXGPSNUM], BdsEph[MAXBDSNUM];
-};
 
-struct RTKEKF
-{
-	GPSTIME Time;
-	double X[3 + MAXCHANNUM * 2], P[(3 + MAXCHANNUM * 2)*(3 + MAXCHANNUM * 2)];
-	int Index[MAXCHANNUM], nSats, nPos[MAXCHANNUM];
-	int FixAmb[MAXCHANNUM];          // 时间更新后上个历元已经固定并传递的模糊度， 1=已固定，-1=未固定或有周跳
-	DDCOBS DDObs, CurDDObs;           // 上一个历元和当前历元的双差观测值信息
-	SDEPOCHOBS SDObs;                 // 上一个历元的单差观测值
-	double X0[3 + MAXCHANNUM * 2], P0[(3 + MAXCHANNUM * 2)*(3 + MAXCHANNUM * 2)];  // 状态备份
-	bool IsInit;                      // 滤波是否初始化
+	NOVDECODER BasDec, RovDec;//基站和流动站各自的解码上下文
+	XYZ BasPos;//解码基站基准坐标
+	bool BasPosValid;//基站基准坐标是否可用
 
-	RTKEKF() {
-		IsInit = false;
-		nSats = 0;
-		for (int i = 0; i < MAXCHANNUM; i++) nPos[i] = Index[i] = FixAmb[i] = -1;
-		for (int i = 0; i < 3 + MAXCHANNUM * 2; i++) {
-			X[i] = X0[i] = 0.0;
-			for (int j = 0; j < 3 + MAXCHANNUM * 2; j++) P[i*(3 + MAXCHANNUM * 2) + j] = P0[i*(3 + MAXCHANNUM * 2) + j] = 0.0;
-		}
+	RAWDAT() {
+		BasPosValid = false;
+		BasPos.xyz[0] = BasPos.xyz[1] = BasPos.xyz[2] = 0.0;
 	}
 };
+
 
 struct ROVERCFGINFO   // 配置信息
 {
@@ -364,6 +444,7 @@ struct ROVERCFGINFO   // 配置信息
     
 	char  BasObsDatFile[256], RovObsDatFile[256];    //  观测数据的文件名
 	char  ResFile[256];            //  结果数据文件名
+	char  DiffFile[256];//定位结果与接收机位置差值文件名
 
     
     ROVERCFGINFO()
@@ -412,10 +493,14 @@ bool CompEnudPos(const XYZ* xyz0, const XYZ* xyzs, NEU* dneu);  //定位误差计算函
 //3/30完成
 // NovAtel OEM7数据解码函数
 int DecodeNovOem7Dat(unsigned char Buff[], int& Len, EPOCHOBS* obs, GPSEPHREC geph[], GPSEPHREC beph[]);
+void InitNovDecoder(NOVDECODER* dec, int SourceId);
+int FeedNovData(NOVDECODER* dec, const unsigned char* data, int n);
+int DecodeNovStream(NOVDECODER* dec, EPOCHOBS* obs, GPSEPHREC geph[], GPSEPHREC beph[], PPRESULT* pos);
+int decode_bestpos(unsigned char* buff, PPRESULT* pos);
 int decode_rangeb_oem7(unsigned char *buff, EPOCHOBS* obs);
 int decode_gpsephem(unsigned char* buff, GPSEPHREC* eph);
 int decode_bdsephem(unsigned char* buff, GPSEPHREC* eph);
-int decode_psrpos(unsigned char* buff, PPRESULT* pos);
+//int decode_psrpos(unsigned char* buff, PPRESULT* pos);旧函数
 unsigned int crc32(const unsigned char *buff, int len);
 
 // 广播星历
@@ -431,11 +516,18 @@ bool SPP(EPOCHOBS* Epoch, RAWDAT* Raw, PPRESULT* Result);
 void SPV(EPOCHOBS* Epoch, PPRESULT* Result );
 
 // RTK
-int GetSynObs(FILE* FBas, FILE* FRov, SOCKET& BasSock, SOCKET& RovSock, RAWDAT* Raw);
+bool ReadRTKConfigInfo(const char FName[], ROVERCFGINFO& cfg);
+int GetSynGNSSObs(FILE* FBas, FILE* FRov, RAWDAT* Raw);//文件
+int GetSynGNSSObs(SOCKET& BasSock, SOCKET& RovSock, RAWDAT* Raw);//实时
+//返回值1=同步成功，0=暂时不同步，-1=数据结束/通信中断
+//int GetSynObs(FILE* FBas, FILE* FRov, SOCKET& BasSock, SOCKET& RovSock, RAWDAT* Raw);
 void FormSDEpochObs(const EPOCHOBS *EpkA, const EPOCHOBS *EpkB, SDEPOCHOBS *SDObs);
 void DetectCycleSlip(SDEPOCHOBS* Obs);
 void DetRefSat(const EPOCHOBS* EpkA, const EPOCHOBS* EpkB, SDEPOCHOBS* SDObs, DDCOBS* DDObs);
-bool RTKFloat(RAWDAT* Raw, PPRESULT* Base, PPRESULT* Rov);
+bool RTKFloat(RAWDAT* Raw, PPRESULT* Base, PPRESULT* Rov, const ROVERCFGINFO* Cfg);
+bool RTKFilter(RTKEKF* Kf, RAWDAT* Raw, PPRESULT* Rov, const ROVERCFGINFO* Cfg);
+bool RTKFix(RAWDAT* Raw, const ROVERCFGINFO* Cfg);
+bool RTKProcEpoch(RAWDAT* Raw, const ROVERCFGINFO* Cfg, PPRESULT* RovRes);
 
 // lambda
 int LD(int n, const double *Q, double *L, double *D);

@@ -1,0 +1,206 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="rtk-decode" name="帧解码流程">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1040" pageHeight="1520" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="t2" value="ParseNovMsg 帧解码流程（单条数据流，基站 / 流动站共用同一套代码）" style="text;html=1;fontSize=16;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="60" y="8" width="920" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b0" value="上游 PumpStream：读数据块（fread / recv）→ FeedNovData 追加到流缓冲&#10;缓冲满：整体清空并 nSyncLoss++（重新寻找同步头）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="50" width="900" height="52" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s2" value="进入 ParseNovMsg（Buff、Len）" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="170" y="130" width="500" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="b1" value="从当前位置滑动搜索同步头 0xAA 44 12" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d0cee2;strokeColor=#56517e;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="170" y="210" width="500" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="d1" value="找到同步头？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="320" y="280" width="200" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="nf1" value="未处理的尾部字节前移保留&#10;返回 0（等待更多数据）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="600" y="295" width="300" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b2" value="读取 28 字节消息头：MsgId、MsgLen&#10;frameLen = 28 + MsgLen + 4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d0cee2;strokeColor=#56517e;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="170" y="410" width="500" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="d2" value="缓冲剩余字节 ≥ frameLen？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="320" y="500" width="200" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="nf2" value="半帧保留：尾部字节前移&#10;返回 0（下次继续拼接）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="600" y="515" width="300" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="d3" value="frameLen ≤ MAXRAWLEN？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="320" y="625" width="200" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="nf3" value="视为误同步&#10;滑动 1 字节重新找同步头" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="600" y="640" width="300" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b3" value="提取整帧 Msg，计算 CRC32（28 字节头 + 消息体）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d0cee2;strokeColor=#56517e;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="170" y="755" width="500" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="d4" value="CRC 校验通过？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="320" y="830" width="200" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="nf4" value="stat-&gt;nBadCrc++&#10;滑动 1 字节重新找同步头" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="600" y="845" width="300" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b4" value="按 MsgId 分发并解码消息体" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d0cee2;strokeColor=#56517e;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="170" y="960" width="500" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r1" value="MsgId 42 BESTPOS&#10;decode_bestpos&#10;→ PPRESULT（基站坐标）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1045" width="210" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="r2" value="MsgId 43 RANGEB&#10;decode_rangeb_oem7&#10;→ EPOCHOBS 观测历元" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="290" y="1045" width="210" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="r3" value="MsgId 7 GPSEPHEM&#10;decode_gpsephem&#10;→ GpsEph 星历" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="520" y="1045" width="210" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="r4" value="MsgId 1696 BDSEPHEMERIS&#10;decode_bdsephem&#10;→ BdsEph 星历" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="750" y="1045" width="210" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b5" value="已处理帧移出缓冲，剩余字节前移（memmove）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d0cee2;strokeColor=#56517e;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="170" y="1175" width="500" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="b6" value="返回 MsgId（PumpStream 解码循环据此判断本流是否解出 RANGEB）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d0cee2;strokeColor=#56517e;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="170" y="1255" width="500" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="e2end" value="返回调用层（PumpStream / GetSynGNSSObs）" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="170" y="1335" width="500" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="note2" value="失败分支统一处理：滑动 1 字节重新寻找同步头；字节数不足一帧时通过 memmove 把尾部字节保留在缓冲区头部并同步更新 Len；nBadCrc / nSyncLoss 记入该流的 NOVDECODER 统计。" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingTop=8;spacingLeft=10;spacingRight=10;fillColor=#f9f9f9;strokeColor=#b3b3b3;fontSize=11;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1420" width="900" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="b0" target="s2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="s2" target="b1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="b1" target="d1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f4" value="否" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="d1" target="nf1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="d1" target="b2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="b2" target="d2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f7" value="否" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="d2" target="nf2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="d2" target="d3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f9" value="否" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="d3" target="nf3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="d3" target="b3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="b3" target="d4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f12" value="否" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="d4" target="nf4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f13" value="是" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="d4" target="b4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="b4" target="r1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="165" y="1020" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="f15" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="b4" target="r2">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="395" y="1020" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="f16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="b4" target="r3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="625" y="1020" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="f17" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="b4" target="r4">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="855" y="1020" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="f18" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="b4" target="b5">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="280" y="1020" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="f19" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="b5" target="b6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="b6" target="e2end">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f21" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="nf1" target="e2end">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="990" y="325" />
+              <mxPoint x="990" y="1357" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="f22" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="nf2" target="e2end">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="970" y="545" />
+              <mxPoint x="970" y="1368" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="f23" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="nf3" target="b1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="750" y="600" />
+              <mxPoint x="40" y="600" />
+              <mxPoint x="40" y="232" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="f24" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;" edge="1" parent="1" source="nf4" target="b1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1000" y="875" />
+              <mxPoint x="1000" y="242" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

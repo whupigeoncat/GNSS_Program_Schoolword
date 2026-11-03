@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "从二进制到 RTK：函数级数据流程",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1068, 610],
+    "legend": {
+      "entries": {
+        "dashed": { "label": "下游接口（未实现）" }
+      }
+    }
+  },
+  "stages": [
+    { "label": "数据输入" },
+    { "label": "流泵浦" },
+    { "label": "帧解析" },
+    { "label": "消息解码" },
+    { "label": "配对与解算" }
+  ],
+  "nodes": [
+    { "id": "bas-src", "type": "external", "label": "基站二进制流", "sublabel": "OEM7 *.bin ｜ TCP 裸字节", "stage": 0, "row": 0, "tag": "fread() / recv()" },
+    { "id": "rov-src", "type": "external", "label": "流动站二进制流", "sublabel": "OEM7 *.bin ｜ TCP 裸字节", "stage": 0, "row": 3, "tag": "fread() / recv()" },
+
+    { "id": "bas-pump", "type": "frontend", "label": "PumpStream() 基站", "sublabel": "读块 → FeedNovData()", "stage": 1, "row": 0, "width": 150, "tag": "循环到 MsgId 43" },
+    { "id": "rov-pump", "type": "frontend", "label": "PumpStream() 流动站", "sublabel": "读块 → FeedNovData()", "stage": 1, "row": 3, "width": 150, "tag": "WaitReadable()·select" },
+
+    { "id": "frm-frame", "type": "backend", "label": "ParseNovMsg()", "sublabel": "DecodeNovStream() 调用", "stage": 2, "row": 0, "width": 140, "tag": "0xAA 44 12·frameLen" },
+    { "id": "frm-crc", "type": "backend", "label": "crc32()", "sublabel": "CRC 对比帧尾 4B", "stage": 2, "row": 1, "width": 150, "tag": "失败滑动 1 字节" },
+    { "id": "frm-disp", "type": "backend", "label": "MsgId 分发（switch）", "sublabel": "42 / 43 / 7 / 1696", "stage": 2, "row": 3, "width": 140, "tag": "memmove·返回 MsgId" },
+
+    { "id": "dec-bestpos", "type": "database", "label": "decode_bestpos()", "sublabel": "BLHToXYZ() → PPRESULT", "stage": 3, "row": 0, "width": 140, "tag": "MsgId 42·首个 rb" },
+    { "id": "dec-eph", "type": "database", "label": "decode_gpsephem()", "sublabel": "decode_bdsephem()", "stage": 3, "row": 1, "width": 140, "tag": "GpsEph[32]·BdsEph[63]" },
+    { "id": "dec-rangeb", "type": "database", "label": "decode_rangeb_oem7()", "sublabel": "→ EPOCHOBS（P/L/D）", "stage": 3, "row": 3, "width": 140, "tag": "MsgId 43·44B/条" },
+
+    { "id": "rawdat", "type": "database", "label": "RAWDAT", "sublabel": "BasEpk+RovEpk+星历+BasPos", "stage": 4, "row": 0, "width": 145, "tag": "BasPosValid" },
+    { "id": "sync", "type": "backend", "label": "GetSynGNSSObs()", "sublabel": "PairEpoch() → GetDiffTime()", "stage": 4, "row": 1, "width": 165, "tag": "跨周·0.5s/5s" },
+    { "id": "rtk", "type": "cloud", "label": "RTK 解算链（未实现）", "sublabel": "FormSDEpochObs→…→lambda()", "stage": 4, "row": 3, "width": 165, "tag": "单差/周跳/双差/浮点" }
+  ],
+  "flows": [
+    { "id": "bas-feed", "from": "bas-src", "to": "bas-pump", "label": "原始字节", "classification": "fread 分块", "variant": "emphasis", "labelAt": [208, 200] },
+    { "id": "rov-feed", "from": "rov-src", "to": "rov-pump", "label": "原始字节", "classification": "recv 分块", "variant": "default", "labelAt": [208, 542] },
+
+    { "id": "bas-call", "from": "bas-pump", "to": "frm-frame", "label": "DecodeNovStream()", "classification": "循环取帧", "variant": "emphasis", "route": "straight", "fromSide": "right", "toSide": "left", "labelAt": [365, 205] },
+    { "id": "rov-call", "from": "rov-pump", "to": "frm-frame", "label": "DecodeNovStream()", "classification": "循环取帧", "variant": "default", "labelAt": [340, 340] },
+
+    { "id": "frame-crc", "from": "frm-frame", "to": "frm-crc", "label": "完整帧", "classification": "frameLen 通过", "variant": "emphasis", "route": "straight", "fromSide": "bottom", "toSide": "top", "labelAt": [480, 214] },
+    { "id": "crc-disp", "from": "frm-crc", "to": "frm-disp", "label": "有效帧", "classification": "CRC32 通过", "variant": "emphasis", "route": "straight", "fromSide": "bottom", "toSide": "top", "labelAt": [530, 385] },
+
+    { "id": "disp-bestpos", "from": "frm-disp", "to": "dec-bestpos", "label": "42", "classification": "BESTPOS", "variant": "default", "labelAt": [610, 214] },
+    { "id": "disp-eph", "from": "frm-disp", "to": "dec-eph", "label": "7 / 1696", "classification": "星历", "variant": "default", "labelAt": [585, 330] },
+    { "id": "disp-rangeb", "from": "frm-disp", "to": "dec-rangeb", "label": "43", "classification": "RANGEB", "variant": "emphasis", "labelAt": [585, 430] },
+
+    { "id": "bestpos-raw", "from": "dec-bestpos", "to": "rawdat", "label": "首个 rb", "classification": "BasPos", "variant": "emphasis", "route": "straight", "fromSide": "right", "toSide": "left", "labelAt": [846, 214] },
+    { "id": "eph-sync", "from": "dec-eph", "to": "sync", "label": "星历数组", "classification": "星历", "variant": "default", "route": "straight", "fromSide": "right", "toSide": "left", "labelAt": [846, 245] },
+    { "id": "rangeb-sync", "from": "dec-rangeb", "to": "sync", "label": "观测历元", "classification": "BasEpk / RovEpk", "variant": "emphasis", "fromSide": "right", "toSide": "bottom", "via": [[865, 499], [865, 320], [960, 320]], "labelAt": [800, 320] },
+
+    { "id": "sync-raw", "from": "sync", "to": "rawdat", "label": "配对成功", "classification": "|dt| ≤ 阈值", "variant": "emphasis", "route": "straight", "fromSide": "top", "toSide": "bottom", "labelAt": [1000, 214] },
+    { "id": "raw-rtk", "from": "rawdat", "to": "rtk", "label": "逐历元 RAWDAT", "classification": "下游接口", "variant": "dashed", "fromSide": "right", "toSide": "right", "via": [[1054, 157], [1054, 499]], "labelAt": [1010, 365] }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "输入与泵浦（Data_IO.cpp）",
+      "items": [
+        "fread() / recv() 读块 → FeedNovData() 追加（Buff[40960]、Len）",
+        "PumpStream() 循环 DecodeNovStream() 直到 MsgId 43（返回 1/0/−1）",
+        "实时用 WaitReadable()（select）；首个 BESTPOS 锁定 rb"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "帧解析与解码（Decoding.cpp）",
+      "items": [
+        "ParseNovMsg()：0xAA 44 12 · frameLen=28+MsgLen+4 · memmove 前移",
+        "crc32() 失败 nBadCrc++；半帧保留返回 0；旧入口 DecodeNovOem7Dat()",
+        "decode_bestpos()→BLHToXYZ()；decode_rangeb_oem7()；decode_gpsephem()/decode_bdsephem()"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "配对与下游（未实现）",
+      "items": [
+        "GetSynGNSSObs() → PairEpoch() → GetDiffTime()（跨周按 GPS 时间）",
+        "文件 0.5 s / 实时 5 s；早→丢弃、晚→追基站、EOF→返回 −1",
+        "下游链：FormSDEpochObs → DetectCycleSlip → DetRefSat → RTKFloat → lambda"
+      ]
+    }
+  ]
+}

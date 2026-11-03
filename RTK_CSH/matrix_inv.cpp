@@ -17,7 +17,7 @@
 
 int MatrixInv(int n, double a[], double b[])
 {
-    int i,j,k,l,u,v,is[60],js[60];   /* matrix dimension <= 60 */
+    int i,j,k,l,u,v,is[250],js[250];   /* matrix dimension <= 60 */
 	double d, p;
 
 	/* 将输入矩阵赋值给输出矩阵b，下面对b矩阵求逆，a矩阵不变 */

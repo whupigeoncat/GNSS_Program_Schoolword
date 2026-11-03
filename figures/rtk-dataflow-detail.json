@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "RTK 数据处理详细流程",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1068, 610],
+    "legend": {
+      "entries": {
+        "dashed": { "label": "下游接口（未实现）" }
+      }
+    }
+  },
+  "stages": [
+    { "label": "数据接入" },
+    { "label": "流缓冲与泵浦" },
+    { "label": "帧解析" },
+    { "label": "消息解码" },
+    { "label": "配对与输出" }
+  ],
+  "nodes": [
+    { "id": "bas-src", "type": "external", "label": "基站数据源", "sublabel": "文件 *.bin ｜ TCP recv", "stage": 0, "row": 0, "tag": "OEM7" },
+    { "id": "rov-src", "type": "external", "label": "流动站数据源", "sublabel": "文件 *.bin ｜ TCP recv", "stage": 0, "row": 3, "tag": "OEM7" },
+
+    { "id": "bas-pump", "type": "frontend", "label": "PumpStream 基站", "sublabel": "fread 读块 → FeedNovData", "stage": 1, "row": 0, "width": 150, "tag": "BasDec·nSyncLoss++" },
+    { "id": "rov-pump", "type": "frontend", "label": "PumpStream 流动站", "sublabel": "recv 读块 → FeedNovData", "stage": 1, "row": 3, "width": 150, "tag": "RovDec·select 100ms" },
+
+    { "id": "frm-frame", "type": "backend", "label": "帧同步 0xAA 44 12", "sublabel": "28B 头 → frameLen 校验", "stage": 2, "row": 0, "width": 140, "tag": "① 帧定位" },
+    { "id": "frm-crc", "type": "backend", "label": "CRC32 校验", "sublabel": "失败 nBadCrc++·滑动 1 字节", "stage": 2, "row": 1, "width": 150, "tag": "② nBadCrc++" },
+    { "id": "frm-disp", "type": "backend", "label": "按 MsgId 分发", "sublabel": "42 / 43 / 7 / 1696", "stage": 2, "row": 3, "width": 140, "tag": "③ 分发" },
+
+    { "id": "dec-obs", "type": "database", "label": "decode_rangeb_oem7", "sublabel": "44B/条·P/L/D/C/N0", "stage": 3, "row": 1, "width": 140, "tag": "L1/L2·B1/B3·nRange++" },
+    { "id": "dec-aux", "type": "database", "label": "BESTPOS / 星历解码", "sublabel": "rb 坐标 · GpsEph · BdsEph", "stage": 3, "row": 3, "width": 140, "tag": "nPos/nGeph/nBeph++" },
+
+    { "id": "rawdat", "type": "database", "label": "RAWDAT", "sublabel": "BasEpk+RovEpk+星历+BasPos", "stage": 4, "row": 0, "width": 145, "tag": "含 BasPosValid" },
+    { "id": "sync", "type": "backend", "label": "GetSynGNSSObs 配对", "sublabel": "dt=Rov−Bas·|dt| ≤ 阈值", "stage": 4, "row": 1, "width": 165, "tag": "0.5 s / 5 s" },
+    { "id": "rtk", "type": "cloud", "label": "RTK 解算（未实现）", "sublabel": "单差→周跳→双差→浮点→固定", "stage": 4, "row": 3, "width": 165, "tag": "已声明未实现" }
+  ],
+  "flows": [
+    { "id": "bas-feed", "from": "bas-src", "to": "bas-pump", "label": "原始字节", "classification": "fread 分块", "variant": "emphasis", "labelAt": [208, 200] },
+    { "id": "rov-feed", "from": "rov-src", "to": "rov-pump", "label": "原始字节", "classification": "recv 分块", "variant": "default", "labelAt": [208, 542] },
+
+    { "id": "bas-parse", "from": "bas-pump", "to": "frm-frame", "label": "FeedNovData", "classification": "半帧拼接", "variant": "emphasis", "route": "straight", "fromSide": "right", "toSide": "left", "labelAt": [388, 250] },
+    { "id": "rov-parse", "from": "rov-pump", "to": "frm-frame", "label": "FeedNovData", "classification": "半帧拼接", "variant": "default", "labelAt": [380, 330] },
+
+    { "id": "frame-crc", "from": "frm-frame", "to": "frm-crc", "label": "完整帧", "classification": "frameLen 通过", "variant": "emphasis", "route": "straight", "fromSide": "bottom", "toSide": "top", "labelAt": [530, 214] },
+    { "id": "crc-disp", "from": "frm-crc", "to": "frm-disp", "label": "校验通过", "classification": "其余字节前移", "variant": "emphasis", "route": "straight", "fromSide": "bottom", "toSide": "top", "labelAt": [530, 385] },
+
+    { "id": "disp-obs", "from": "frm-disp", "to": "dec-obs", "label": "43", "classification": "RANGEB", "variant": "emphasis", "labelAt": [600, 214] },
+    { "id": "disp-aux", "from": "frm-disp", "to": "dec-aux", "label": "42 / 7 / 1696", "classification": "BESTPOS · 星历", "variant": "default", "labelAt": [585, 430] },
+
+    { "id": "obs-sync", "from": "dec-obs", "to": "sync", "label": "观测历元", "classification": "BasEpk / RovEpk", "variant": "emphasis", "route": "straight", "fromSide": "right", "toSide": "left", "labelAt": [820, 225] },
+    { "id": "aux-sync", "from": "dec-aux", "to": "sync", "label": "rb + 星历", "classification": "BasPos · GpsEph/BdsEph", "variant": "default", "fromSide": "right", "toSide": "bottom", "via": [[865, 499], [865, 320], [960, 320]], "labelAt": [800, 320] },
+
+    { "id": "sync-raw", "from": "sync", "to": "rawdat", "label": "配对成功", "classification": "|dt| ≤ 阈值", "variant": "emphasis", "route": "straight", "fromSide": "top", "toSide": "bottom", "labelAt": [1000, 214] },
+    { "id": "raw-rtk", "from": "rawdat", "to": "rtk", "label": "逐历元 RAWDAT", "classification": "下游接口", "variant": "dashed", "fromSide": "right", "toSide": "right", "via": [[1054, 157], [1054, 499]], "labelAt": [1010, 365] }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "帧解析核心（Decoding.cpp）",
+      "items": [
+        "帧同步 0xAA 44 12；frameLen = 28 + MsgLen + 4",
+        "CRC32（多项式 0xEDB88320）失败：滑动 1 字节重找",
+        "不足一帧保留半帧；缓冲满 nSyncLoss++ 重同步"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "双流泵浦与配对（Data_IO.cpp）",
+      "items": [
+        "PumpStream 循环取帧直到本流解出 MsgId 43（返回 1/0/−1）",
+        "PairEpoch：基站未到→追基站；流动站早→丢弃；达标→成功",
+        "基站 EOF / 断连→RTK 结束；首个有效 BESTPOS 锁定 rb"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "消息解码与下游（未实现）",
+      "items": [
+        "BESTPOS→rb；RANGEB→双频观测；7/1696→广播星历",
+        "RTK 链：单差→周跳→双差→浮点解→LAMBDA 固定",
+        "main.cpp 模式 2/3 未接入；ReadRTKConfigInfo 占位"
+      ]
+    }
+  ]
+}

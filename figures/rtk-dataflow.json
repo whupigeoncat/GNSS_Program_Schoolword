@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "RTK 双流共用解码数据处理",
+    "locale": "zh-CN",
+    "viewBox": [1068, 610],
+    "quality_profile": "showcase",
+    "views": [
+      { "id": "decode-path", "label": "解码主路径", "focus": ["bas-src", "bas-dec", "parse", "sync"], "note": "基站原始字节经独立缓冲区进入共用解析核心。" },
+      { "id": "rover-path", "label": "流动站路径", "focus": ["rov-src", "rov-dec", "parse", "sync"], "note": "流动站与基站共用同一套解析代码，仅缓冲区状态独立。" },
+      { "id": "sync-output", "label": "同步输出", "focus": ["sync", "rawdat", "rtk"], "note": "按 GPS 时间配对，同步成功后输出 RAWDAT 供 RTK 解算。" }
+    ]
+  },
+  "stages": [
+    { "label": "数据源" },
+    { "label": "流缓冲" },
+    { "label": "共用解码" },
+    { "label": "结构体" },
+    { "label": "同步输出" }
+  ],
+  "nodes": [
+    { "id": "bas-src", "type": "external", "label": "基站数据源", "sublabel": "文件 *.bin / TCP", "stage": 0, "row": 0, "tag": "OEM7" },
+    { "id": "rov-src", "type": "external", "label": "流动站数据源", "sublabel": "文件 *.bin / TCP", "stage": 0, "row": 3, "tag": "OEM7" },
+
+    { "id": "bas-dec", "type": "frontend", "label": "BasDec", "sublabel": "NOVDECODER 缓冲区", "stage": 1, "row": 0, "tag": "状态独立" },
+    { "id": "rov-dec", "type": "frontend", "label": "RovDec", "sublabel": "NOVDECODER 缓冲区", "stage": 1, "row": 3, "tag": "状态独立" },
+
+    { "id": "parse", "type": "backend", "label": "ParseNovMsg", "sublabel": "帧同步→CRC32→分发", "stage": 2, "row": 1, "tag": "共用核心" },
+
+    { "id": "basepk", "type": "database", "label": "BasEpk", "sublabel": "基站观测历元", "stage": 3, "row": 0, "tag": "MsgId 43" },
+    { "id": "eph", "type": "database", "label": "GpsEph / BdsEph", "sublabel": "一组星历 两流共用", "stage": 3, "row": 1, "tag": "MsgId 7/1696" },
+    { "id": "baspos", "type": "database", "label": "BasPos", "sublabel": "固定基站坐标 rb[3]", "stage": 3, "row": 2, "tag": "MsgId 42" },
+    { "id": "rovepk", "type": "database", "label": "RovEpk", "sublabel": "流动站观测历元", "stage": 3, "row": 3, "tag": "MsgId 43" },
+
+    { "id": "sync", "type": "backend", "label": "GetSynGNSSObs", "sublabel": "GPS 时间配对 |dt|≤阈值", "stage": 4, "row": 1, "tag": "文件0.5s 实时5s" },
+
+    { "id": "rawdat", "type": "database", "label": "RAWDAT", "sublabel": "BasEpk+RovEpk+星历", "stage": 4, "row": 0, "tag": "同步成功" },
+    { "id": "rtk", "type": "cloud", "label": "RTK 解算", "sublabel": "后续模块(待实现)", "stage": 4, "row": 3, "tag": "下游" }
+  ],
+  "flows": [
+    { "id": "bas-feed", "from": "bas-src", "to": "bas-dec", "label": "原始字节流", "classification": "文件/网络", "variant": "emphasis" },
+    { "id": "rov-feed", "from": "rov-src", "to": "rov-dec", "label": "原始字节流", "classification": "文件/网络", "variant": "default" },
+
+    { "id": "bas-parse", "from": "bas-dec", "to": "parse", "label": "FeedNovData", "classification": "半帧保留", "variant": "emphasis" },
+    { "id": "rov-parse", "from": "rov-dec", "to": "parse", "label": "FeedNovData", "classification": "半帧保留", "variant": "default" },
+
+    { "id": "parse-basepk", "from": "parse", "to": "basepk", "label": "RANGEB", "classification": "MsgId 43", "variant": "emphasis", "fromSide": "top", "toSide": "left", "via": [[530, 157], [660, 157]], "labelAt": [655, 143] },
+    { "id": "parse-eph", "from": "parse", "to": "eph", "label": "星历", "classification": "MsgId 7/1696", "variant": "default", "route": "straight" },
+    { "id": "parse-baspos", "from": "parse", "to": "baspos", "label": "BESTPOS", "classification": "MsgId 42 仅基站", "variant": "security", "fromSide": "bottom", "toSide": "left", "via": [[530, 330], [590, 330], [590, 385], [660, 385]], "labelAt": [595, 330] },
+    { "id": "parse-rovepk", "from": "parse", "to": "rovepk", "label": "RANGEB", "classification": "MsgId 43", "variant": "default", "fromSide": "bottom", "toSide": "left", "via": [[530, 350], [470, 350], [470, 499], [660, 499]], "labelAt": [545, 499] },
+
+    { "id": "basepk-sync", "from": "basepk", "to": "sync", "label": "基站历元", "classification": "配对", "variant": "emphasis" },
+    { "id": "rovepk-sync", "from": "rovepk", "to": "sync", "label": "流动站历元", "classification": "配对", "variant": "default" },
+    { "id": "sync-rawdat", "from": "sync", "to": "rawdat", "label": "配对成功", "classification": "|dt|≤阈值", "variant": "emphasis", "route": "straight", "fromSide": "top", "toSide": "bottom", "labelAt": [985, 214] },
+    { "id": "sync-rtk", "from": "sync", "to": "rtk", "label": "同步 RAWDAT", "classification": "逐历元", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "via": [[960, 330], [1030, 330], [1030, 440], [960, 440]], "labelAt": [1030, 385] }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "共用解码核心",
+      "items": [
+        "一套 ParseNovMsg 代码：帧同步 0xAA44 0x12 → CRC32 → 按 MsgId 分发",
+        "旧接口 DecodeNovOem7Dat 为薄包装，SPP 单站路径零回归风险",
+        "解码算法零改动，仅重组持有缓冲区的方式"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "两流独立 · 时间同步",
+      "items": [
+        "BasDec / RovDec 各持一份 NOVDECODER：缓冲区、半帧状态、统计计数",
+        "GetDiffTime 算 dt=Rov−Bas（跨周已处理）；文件阈值 0.5s，实时 5s",
+        "流动站早于基站则丢弃该历元；基站 EOF 则 RTK 结束"
+      ]
+    }
+  ]
+}
